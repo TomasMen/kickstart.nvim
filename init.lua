@@ -232,6 +232,10 @@ vim.opt.rtp:prepend(lazypath)
 -- NOTE: Here is where you install your plugins.
 require('lazy').setup({
   -- NOTE: Plugins can be added with a link (or for a github repo: 'owner/repo' link).
+  {
+    'numToStr/Comment.nvim',
+    opts = {},
+  },
   'tpope/vim-sleuth', -- Detect tabstop and shiftwidth automatically
 
   -- NOTE: Plugins can also be added by using a table,
@@ -396,7 +400,7 @@ require('lazy').setup({
           },
         },
       }
-
+      require('Comment').setup()
       -- Enable Telescope extensions if they are installed
       pcall(require('telescope').load_extension, 'fzf')
       pcall(require('telescope').load_extension, 'ui-select')
@@ -976,3 +980,64 @@ require('lazy').setup({
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
+--
+-- Set global options
+vim.opt.tabstop = 2
+vim.opt.shiftwidth = 2
+vim.opt.expandtab = true
+vim.opt.autoindent = true
+vim.opt.smartindent = true
+
+vim.opt.virtualedit:append 'block'
+
+-- LSP-based commenting
+local function comment_lines_lsp()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local start_line = vim.fn.line "'<"
+  local end_line = vim.fn.line "'>"
+
+  -- Check if LSP is attached
+  local clients = vim.lsp.get_active_clients { bufnr = bufnr }
+  if #clients == 0 then
+    vim.notify('No LSP client attached to this buffer.', vim.log.levels.WARN, { title = 'LSP Comment' })
+    return
+  end
+
+  -- Use the first attached client
+  local client = clients[1]
+
+  -- Check if the client supports documentFormatting or rangeFormatting
+  if not (client.server_capabilities.documentFormattingProvider or client.server_capabilities.documentRangeFormattingProvider) then
+    vim.notify('LSP client does not support formatting.', vim.log.levels.WARN, { title = 'LSP Comment' })
+    return
+  end
+
+  -- Prepare the params for rangeFormatting
+  local params = vim.lsp.util.new_formatting_params(nil, nil)
+  params.range = {
+    start = { line = start_line - 1, character = 0 },
+    ['end'] = { line = end_line, character = 0 },
+  }
+  params.options.insertSpaces = not vim.bo.noexpandtab
+  params.options.tabSize = vim.bo.tabstop
+
+  -- Call the LSP range formatting
+  client.request('textDocument/rangeFormatting', params, function(err, result, ctx)
+    if err then
+      vim.notify('LSP rangeFormatting failed: ' .. err, vim.log.levels.ERROR, { title = 'LSP Comment' })
+      return
+    end
+
+    if result then
+      local lsp_edits = vim.lsp.util.apply_text_edits(result, bufnr)
+      if not lsp_edits then
+        vim.notify('Failed to apply LSP edits.', vim.log.levels.ERROR, { title = 'LSP Comment' })
+      end
+    else
+      vim.notify('LSP rangeFormatting returned no result.', vim.log.levels.WARN, { title = 'LSP Comment' })
+    end
+  end, bufnr)
+end
+
+-- Keybinding for LSP-based commenting
+vim.keymap.set('v', '<leader>cl', comment_lines_lsp, { desc = 'Comment Lines (LSP)' })
