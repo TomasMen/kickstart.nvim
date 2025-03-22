@@ -676,3 +676,13 @@ servers.csharp_ls = {
     DOTNET_MULTILEVEL_LOOKUP = '0',
   },
 }
+
+vim.api.nvim_create_user_command('FormatProject', function()
+  local files = vim.fn.systemlist "find . -type f -name '*'"
+  for _, file in ipairs(files) do
+    vim.cmd('e ' .. file)
+    vim.cmd 'ConformFormat' -- or use the async format command
+    vim.cmd 'w!' -- Save the buffer
+    vim.cmd 'bw!' -- Close the buffer
+  end
+end, { desc = 'Format All Files in Project' })
